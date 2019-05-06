@@ -1,0 +1,89 @@
+version: "2.2"
+services:
+
+  # single node
+
+  es-dev: 
+    image: elasticsearch:7.0.1
+    environment:
+      - discovery.type=single-node
+      - logger.org.elasticsearch=debug
+    volumes:
+      - esdata-dev:/usr/share/elasticsearch/data
+    networks:
+      - default
+
+  # n nodes cluster
+
+  es-cluster-master:
+    image: elasticsearch:7.0.1
+    container_name: es-cluster-master
+    environment:
+      - node.name=es-cluster-master
+      - node.master=true
+      - node.ingest=false
+      - node.data=false
+      - cluster.name=es
+      - cluster.initial_master_nodes=es-cluster-master
+      - logger.org.elasticsearch=debug
+    volumes:
+      - esdata-cluster-master:/usr/share/elasticsearch/data
+    networks:
+      - default
+
+  es-cluster-data:
+    image: elasticsearch:7.0.1
+    environment:
+      - node.master=false
+      - node.ingest=false
+      - node.data=true
+      - node.max_local_storage_nodes=10
+      - cluster.name=es
+      - cluster.initial_master_nodes=es-cluster-master
+      - bootstrap.memory_lock=true
+      - logger.org.elasticsearch=debug
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "discovery.zen.ping.unicast.hosts=es-cluster-master"
+    depends_on:
+      - es-cluster-master
+    volumes:
+      - esdata-cluster-data:/usr/share/elasticsearch/data
+    networks:
+      - default
+    scale: 3
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+
+  # run against single node
+
+  app-dev:
+    depends_on:
+      - es-dev
+    build:
+      context: .
+    networks:
+      - default
+    environment:
+      - DB_URI=http://es-dev:9200
+
+  # run against two node cluster
+
+  app-cluster:
+    depends_on:
+      - es-cluster-data
+    build:
+      context: .
+    networks:
+      - default
+    environment:
+      - DB_URI=http://es-cluster-master:9200
+
+volumes:
+  esdata-dev:  
+  esdata-cluster-master:
+  esdata-cluster-data:
+
+networks:
+  default:
